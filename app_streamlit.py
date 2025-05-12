@@ -47,7 +47,7 @@ def scrape_google_maps_reviews(business_name, location, selected_stars):
     options.add_argument("--disable-dev-shm-usage") # Often needed in containerized environments
     options.add_argument("--window-size=1920,1080") # Specify window size for headless
     options.add_argument("--disable-gpu")
-    options.binary_location = '/usr/bin/google-chrome'
+    options.binary_location = '/usr/bin/chromium-browser'
 
     try:
         # Use webdriver-manager to handle driver installation/updates
