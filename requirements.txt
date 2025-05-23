@@ -3,3 +3,5 @@ pandas
 selenium
 webdriver-manager
 XlsxWriter
+chromium-browser
+chromium-chromedriver
