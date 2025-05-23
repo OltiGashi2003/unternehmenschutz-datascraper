@@ -163,9 +163,9 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                 return []
 
             previous_reviews_count = 0
-            max_scroll_attempts = 50
+            max_scroll_attempts = 100
             no_new_reviews_count = 0
-            scroll_pause_time = 2.5
+            scroll_pause_time = 2
 
             print("Starting scroll to load all reviews...")
             for attempt in range(max_scroll_attempts):
