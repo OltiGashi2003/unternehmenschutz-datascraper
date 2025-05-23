@@ -11,6 +11,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager # Added for easier driver management
 from selenium.webdriver.chrome.service import Service as ChromeService # Added for driver management
+import os
 
 # --- Helper Function to Convert DataFrame to CSV/Excel ---
 # @st.cache_data # Cache the conversion to prevent re-running on every interaction
@@ -42,12 +43,15 @@ def scrape_google_maps_reviews(business_name, location, selected_stars):
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-infobars")
-    options.add_argument("--headless") # Run headless for Streamlit Cloud compatibility #headless=new
+    options.add_argument("--headless")  # Change from --headless=new
     options.add_argument("--no-sandbox") # Often needed in containerized environments
     options.add_argument("--disable-dev-shm-usage") # Often needed in containerized environments
     options.add_argument("--window-size=1920,1080") # Specify window size for headless
     options.add_argument("--disable-gpu")
-    options.binary_location = '/usr/bin/chromium-browser'
+
+    # Set binary location for Streamlit Cloud
+    if os.path.exists("/usr/bin/chromium-browser"):
+        options.binary_location = "/usr/bin/chromium-browser"
 
     try:
         # Use webdriver-manager to handle driver installation/updates
