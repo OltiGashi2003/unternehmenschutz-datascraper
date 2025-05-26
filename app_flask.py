@@ -206,13 +206,43 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
 
                 rating_value = 0
                 rating_text = "N/A"
+                
+                # Try to find star-based rating first (aria-label method)
                 try:
                     rating_element = review.find_element(By.XPATH, './/span[contains(@aria-label, "star") or contains(@aria-label, "Stern")]')
                     rating_text = rating_element.get_attribute('aria-label').strip()
                     rating_match = re.search(r'(\d+)', rating_text)
                     if rating_match:
                         rating_value = int(rating_match.group(1))
+                        rating_text = f"{rating_value} stars"
                 except NoSuchElementException:
+                    # Try to find numerical rating format (e.g., 3/5, 4/5)
+                    try:
+                        rating_element = review.find_element(By.XPATH, './/span[@class="fzvQIb"]')
+                        rating_text = rating_element.text.strip()
+                        # Extract rating from formats like "3/5", "4/5", etc.
+                        rating_match = re.search(r'(\d+)/5', rating_text)
+                        if rating_match:
+                            rating_value = int(rating_match.group(1))
+                        else:
+                            # Fallback: try to extract just the number
+                            rating_match = re.search(r'(\d+)', rating_text)
+                            if rating_match:
+                                rating_value = int(rating_match.group(1))
+                    except NoSuchElementException:
+                        # Last attempt: try any span with rating-like text
+                        try:
+                            rating_elements = review.find_elements(By.XPATH, './/span[contains(text(), "/5")]')
+                            if rating_elements:
+                                rating_text = rating_elements[0].text.strip()
+                                rating_match = re.search(r'(\d+)/5', rating_text)
+                                if rating_match:
+                                    rating_value = int(rating_match.group(1))
+                        except:
+                            pass
+                
+                # Skip review if no rating found
+                if rating_value == 0:
                     continue
 
                 if rating_value in selected_stars:
@@ -220,16 +250,146 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                     review_date = "N/A"
                     review_text_content = "N/A"
                     review_link = "No link available"
-
+                    review_source = "Unknown"
+                    
                     try:
                         reviewer_name = review.find_element(By.XPATH, ".//div[contains(@class, 'd4r55')]").text
                     except NoSuchElementException:
-                        pass
-
+                        pass                    # Handle different date formats and filter by source
                     try:
-                        review_date = review.find_element(By.XPATH, ".//span[contains(@class, 'rsqaWe')]").text
+                        # First try the standard date format (star-based reviews)
+                        date_element = review.find_element(By.XPATH, ".//span[contains(@class, 'rsqaWe')]")
+                        review_date = date_element.text
+                        review_source = "Google"
+                        print(f"Found star-based date: {review_date}")
                     except NoSuchElementException:
-                        pass
+                        # Try the DU9Pgb div which contains rating, date and source info
+                        try:
+                            du9pgb_element = review.find_element(By.XPATH, ".//div[@class='DU9Pgb']")
+                            full_text = du9pgb_element.text.strip()
+                            print(f"Found DU9Pgb element with text: '{full_text}'")
+                              # Example text: "2/5 5 years ago on Tripadvisor" or "4/5 a year ago on Google"
+                            # We need to extract just the date part (e.g., "5 years ago", "a year ago")
+                            
+                            # Use regex to extract the date pattern from the full text
+                            # This pattern covers both English and German date formats
+                            date_patterns = [
+                                # German patterns (including "bei" variations)
+                                r'(vor\s+\d+\s+Jahren?(?:\s+bei)?)',       # "vor 2 Jahren", "vor 2 Jahren bei"
+                                r'(vor\s+einem\s+Jahr(?:\s+bei)?)',        # "vor einem Jahr", "vor einem Jahr bei"
+                                r'(vor\s+\d+\s+Monaten?(?:\s+bei)?)',      # "vor 2 Monaten", "vor 2 Monaten bei"
+                                r'(vor\s+einem\s+Monat(?:\s+bei)?)',       # "vor einem Monat", "vor einem Monat bei"
+                                r'(vor\s+\d+\s+Wochen?(?:\s+bei)?)',       # "vor 2 Wochen", "vor 2 Wochen bei"
+                                r'(vor\s+einer\s+Woche(?:\s+bei)?)',       # "vor einer Woche", "vor einer Woche bei"
+                                r'(vor\s+\d+\s+Tagen?(?:\s+bei)?)',        # "vor 2 Tagen", "vor 2 Tagen bei"
+                                r'(vor\s+einem\s+Tag(?:\s+bei)?)',         # "vor einem Tag", "vor einem Tag bei"
+                                # English patterns
+                                r'(\d+\s+years?\s+ago)',                   # "2 years ago", "1 year ago"
+                                r'(a\s+year\s+ago)',                       # "a year ago"
+                                r'(\d+\s+months?\s+ago)',                  # "2 months ago", "1 month ago"
+                                r'(a\s+month\s+ago)',                      # "a month ago"
+                                r'(\d+\s+weeks?\s+ago)',                   # "2 weeks ago", "1 week ago"
+                                r'(a\s+week\s+ago)',                       # "a week ago"
+                                r'(\d+\s+days?\s+ago)',                    # "2 days ago", "1 day ago"
+                                r'(a\s+day\s+ago)',                        # "a day ago"
+                            ]
+                            
+                            # First, normalize whitespace and newlines to handle multiline text
+                            normalized_text = ' '.join(full_text.split())
+                            print(f"Normalized text: '{normalized_text}'")
+                            
+                            review_date = None
+                            for pattern in date_patterns:
+                                date_match = re.search(pattern, normalized_text, re.IGNORECASE | re.DOTALL)
+                                if date_match:
+                                    review_date = date_match.group(1).strip()
+                                    # Remove "bei" from the end if present
+                                    review_date = re.sub(r'\s+bei\s*$', '', review_date, flags=re.IGNORECASE)
+                                    break
+                            
+                            if review_date:
+                                print(f"Extracted date from DU9Pgb: '{review_date}'")
+                                
+                                # Determine source from the full text
+                                if "Google" in full_text:
+                                    review_source = "Google"
+                                elif any(source in full_text for source in ["Tripadvisor", "Yelp", "Facebook", "Booking"]):
+                                    # Extract the source name
+                                    if "Tripadvisor" in full_text:
+                                        review_source = "Tripadvisor"
+                                    elif "Yelp" in full_text:
+                                        review_source = "Yelp"
+                                    elif "Facebook" in full_text:
+                                        review_source = "Facebook"
+                                    elif "Booking" in full_text:
+                                        review_source = "Booking"
+                                    
+                                    print(f"Skipping {review_source} review: {full_text}")
+                                    continue
+                                else:
+                                    review_source = "Google"  # Default to Google if no source specified
+                                
+                                print(f"Review source: {review_source}, Date: {review_date}")
+                            else:
+                                print(f"Could not extract date from DU9Pgb text: '{full_text}'")
+                                # Try fallback methods
+                                if "ago" in full_text.lower() or "her" in full_text.lower():
+                                    # Try to split by common patterns
+                                    if " on " in full_text:
+                                        parts = full_text.split(" on ")
+                                        if len(parts) >= 2:
+                                            # Extract everything before " on " and after the rating
+                                            before_on = parts[0].strip()
+    
+                                            # Remove rating pattern (e.g., "2/5 ")
+                                            date_part = re.sub(r'^\d+/\d+\s*', '', before_on).strip()
+                                            if date_part:
+                                                review_date = date_part
+                                                # Determine source from after " on "
+                                                source_part = parts[1].strip()
+                                                if "Google" in source_part:
+                                                    review_source = "Google"
+                                                else:
+                                                    print(f"Skipping non-Google review from: {source_part}")
+                                                    continue
+                                            else:
+                                                review_date = "Date not found"
+                                                review_source = "Google"
+                                    else:
+                                        # No " on " found, assume it's Google and try to extract date
+                                        date_part = re.sub(r'^\d+/\d+\s*', '', full_text).strip()
+                                        review_date = date_part if date_part else "Date not found"
+                                        review_source = "Google"
+                                else:
+                                    review_date = "Date not found"
+                                    review_source = "Google"
+                                    
+                        except NoSuchElementException:
+                            print("Could not find DU9Pgb element, trying fallback methods")
+                            # Final fallback to original xRkPPb method
+                            try:
+                                date_element = review.find_element(By.XPATH, ".//span[@class='xRkPPb']")
+                                date_text = date_element.text
+                                print(f"Fallback: Found xRkPPb date element: '{date_text}'")
+                                
+                                if "Google" in date_text:
+                                    if " on " in date_text:
+                                        review_date = date_text.split(" on ")[0].strip()
+                                    elif " auf " in date_text:
+                                        review_date = date_text.split(" auf ")[0].strip()
+                                    else:
+                                        review_date = date_text.replace("Google", "").strip()
+                                    review_source = "Google"
+                                else:
+                                    review_date = "Date not found"
+                                    review_source = "Google"
+                            except NoSuchElementException:
+                                print("No date elements found, setting defaults")
+                                review_date = "Date not found"
+                                review_source = "Google"
+                      # Skip the review if it's not from Google
+                    if review_source != "Google":
+                        continue
 
                     try:
                         more_button = review.find_element(By.XPATH, ".//button[contains(@aria-label, 'See more')]")
