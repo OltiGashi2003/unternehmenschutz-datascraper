@@ -38,13 +38,13 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-gpu")
-    options.add_argument("--disable-extensions")
-
-    # Set binary location for Render deployment
+    options.add_argument("--disable-extensions")    # Set binary location for Railway/Render deployment
     if os.path.exists("/usr/bin/google-chrome"):
         options.binary_location = "/usr/bin/google-chrome"
     elif os.path.exists("/usr/bin/google-chrome-stable"):
         options.binary_location = "/usr/bin/google-chrome-stable"
+    elif os.path.exists("/usr/bin/chromium-browser"):
+        options.binary_location = "/usr/bin/chromium-browser"
 
     try:
         service = ChromeService(ChromeDriverManager().install())
