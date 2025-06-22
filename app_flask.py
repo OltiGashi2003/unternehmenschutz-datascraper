@@ -22,6 +22,63 @@ def convert_df_to_excel(df):
     processed_data = output.getvalue()
     return processed_data
 
+def check_early_stop_condition(browser, selected_stars, max_rating_needed):
+    """
+    Check if we should stop scrolling early based on rating patterns.
+    Returns True if we should stop, False if we should continue.
+    """
+    try:
+        # Get the last 5-10 visible reviews to check their ratings
+        reviewDivs = browser.find_elements(By.XPATH, "//div[@data-review-id]")
+        if len(reviewDivs) < 10:
+            return False
+        
+        # Check the last 5 reviews
+        last_reviews = reviewDivs[-5:]
+        ratings_found = []
+        
+        for review in last_reviews:
+            try:
+                rating_value = 0
+                
+                # Try to find star-based rating first (aria-label method)
+                try:
+                    rating_element = review.find_element(By.XPATH, './/span[contains(@aria-label, "star") or contains(@aria-label, "Stern")]')
+                    rating_text = rating_element.get_attribute('aria-label').strip()
+                    rating_match = re.search(r'(\d+)', rating_text)
+                    if rating_match:
+                        rating_value = int(rating_match.group(1))
+                except NoSuchElementException:
+                    # Try numerical rating format
+                    try:
+                        rating_element = review.find_element(By.XPATH, './/span[@class="fzvQIb"]')
+                        rating_text = rating_element.text.strip()
+                        rating_match = re.search(r'(\d+)/5', rating_text)
+                        if rating_match:
+                            rating_value = int(rating_match.group(1))
+                    except NoSuchElementException:
+                        continue
+                
+                if rating_value > 0:
+                    ratings_found.append(rating_value)
+            except Exception:
+                continue
+        
+        if not ratings_found:
+            return False
+        
+        # If all recent reviews have ratings higher than what we need, stop
+        min_recent_rating = min(ratings_found)
+        if min_recent_rating > max_rating_needed:
+            print(f"Early stop condition met: Recent ratings {ratings_found} are all above {max_rating_needed}")
+            return True
+        
+        return False
+        
+    except Exception as e:
+        print(f"Error in early stop check: {e}")
+        return False
+
 def scrape_google_maps_reviews(business_name_input, location_input, selected_stars):
     search_query = f"{business_name_input} {location_input}".replace(' ', '+')
     all_reviews = []
@@ -33,18 +90,38 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-infobars")
-    options.add_argument("--headless")  # Use classic headless for better compatibility
+    options.add_argument("--headless=new")  # Use new headless mode for better Render compatibility
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-gpu")
-    options.add_argument("--disable-extensions")    # Set binary location for Railway/Render deployment
-    if os.path.exists("/usr/bin/google-chrome"):
-        options.binary_location = "/usr/bin/google-chrome"
-    elif os.path.exists("/usr/bin/google-chrome-stable"):
-        options.binary_location = "/usr/bin/google-chrome-stable"
-    elif os.path.exists("/usr/bin/chromium-browser"):
-        options.binary_location = "/usr/bin/chromium-browser"
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    options.add_argument("--remote-debugging-port=9222")
+
+    # Enhanced Chrome binary detection for Render deployment
+    chrome_paths = [
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable", 
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/opt/google/chrome/chrome",
+        "/app/.apt/usr/bin/google-chrome-stable"  # Render-specific path
+    ]
+
+    chrome_binary = None
+    for path in chrome_paths:
+        if os.path.exists(path):
+            chrome_binary = path
+            print(f"✅ Found Chrome binary at: {path}")
+            break
+
+    if chrome_binary:
+        options.binary_location = chrome_binary
+    else:
+        print("⚠️ Warning: Chrome binary not found, using system default")
+        # Don't set binary_location, let ChromeDriverManager handle it
 
     try:
         service = ChromeService(ChromeDriverManager().install())
@@ -54,7 +131,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
 
         # Accept cookies if present
         try:
-            accept_button = WebDriverWait(browser, 10).until(
+            accept_button = WebDriverWait(browser, 3).until(
                 EC.element_to_be_clickable((By.XPATH, '//button[.//span[contains(text(),"Accept all") or contains(text(),"Alle akzeptieren")]]'))
             )
             accept_button.click()
@@ -68,7 +145,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
             print("Extracting business overview...")
             # Business Name
             try:
-                bname = WebDriverWait(browser, 5).until(
+                bname = WebDriverWait(browser, 3).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, "h1.DUwDvf"))
                 ).text
                 business_data["Business Name"] = bname
@@ -79,7 +156,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
 
             # Average Rating
             try:
-                rating_element = WebDriverWait(browser, 5).until(
+                rating_element = WebDriverWait(browser, 3).until(
                     EC.presence_of_element_located((By.XPATH, '//*[@id="QA0Szd"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div/div[1]/div[2]/div/div[1]/div[2]/span[1]/span[1]'))
                 )
                 avg_rating = rating_element.text
@@ -91,7 +168,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
 
             # Total Reviews
             try:
-                reviews_element = WebDriverWait(browser, 5).until(
+                reviews_element = WebDriverWait(browser, 4).until(
                     EC.presence_of_element_located((By.XPATH, '//*[@id="QA0Szd"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[2]/div/div[1]/div[2]/div/div[1]/div[2]/span[2]/span/span'))
                 )
                 total_reviews = reviews_element.text
@@ -105,9 +182,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
             business_data["Price Range"] = "N/A"
 
         except Exception as e:
-            print(f"Could not extract all business overview details: {e}")
-
-        # Click "Reviews" tab
+            print(f"Could not extract all business overview details: {e}")        # Click "Reviews" tab
         try:
             review_button_xpaths = [
                 '//button[contains(@aria-label, "Reviews for") or contains(@aria-label, "Rezensionen für")]',
@@ -117,7 +192,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
             review_button = None
             for xpath in review_button_xpaths:
                 try:
-                    review_button = WebDriverWait(browser, 10).until(
+                    review_button = WebDriverWait(browser, 3).until(
                         EC.element_to_be_clickable((By.XPATH, xpath))
                     )
                     print(f"Found reviews button/tab using XPath: {xpath}")
@@ -139,7 +214,56 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
             browser.quit()
             return []
 
-        # Scroll through ALL reviews
+        # Check if we should sort by lowest rating for optimization
+        max_rating_needed = max(selected_stars)
+        min_rating_needed = min(selected_stars)
+        should_sort_by_lowest = max_rating_needed <= 3  # Only sort if we only need low ratings
+        
+        if should_sort_by_lowest:
+            try:
+                print("Attempting to sort reviews by lowest rating for optimization...")
+                  # Try multiple selectors for the Sort button
+                sort_button = None
+                sort_selectors = [
+                    '//span[@class="Cw1rxd google-symbols G47vBd"]',
+                    '//button[@class="HQzyZ"][@aria-label="Most relevant"]',
+                    '//button[contains(@aria-label, "Most relevant")]',
+                    '//div[@class="fontBodyLarge k5lwKb" and text()="Most relevant"]',
+                    '//span[@class="GMtm7c fontTitleSmall" and text()="Sort"]',
+                    '//*[@id="QA0Szd"]/div/div/div[1]/div[2]/div/div[1]/div/div/div[4]/div[10]/button[2]/div'
+                ]
+                
+                for selector in sort_selectors:
+                    try:
+                        sort_button = WebDriverWait(browser, 3).until(
+                            EC.element_to_be_clickable((By.XPATH, selector))
+                        )
+                        print(f"Found sort button using selector: {selector}")
+                        break
+                    except (TimeoutException, NoSuchElementException):
+                        continue
+                
+                if sort_button:
+                    sort_button.click()
+                    print("Clicked Sort/Most Relevant button.")
+                    time.sleep(2)
+                    
+                    # Click "Lowest rating" option using the specific xpath
+                    lowest_rating_button = WebDriverWait(browser, 4).until(
+                        EC.element_to_be_clickable((By.XPATH, '//*[@id="action-menu"]/div[4]'))
+                    )
+                    lowest_rating_button.click()
+                    print("Selected 'Lowest rating' sort option.")
+                    time.sleep(3)
+                else:
+                    print("Could not find sort button with any selector")
+                    should_sort_by_lowest = False
+                
+            except Exception as e:
+                print(f"Could not sort by lowest rating (will continue with default sorting): {e}")
+                should_sort_by_lowest = False
+
+        # Scroll through reviews with smart stopping
         try:
             scrollable_div_xpaths = [
                 '//div[@role="main"]/div[contains(@class, "review-dialog-list")]',
@@ -149,7 +273,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
             reviewArea = None
             for xpath in scrollable_div_xpaths:
                 try:
-                    reviewArea = WebDriverWait(browser, 10).until(
+                    reviewArea = WebDriverWait(browser, 4).until(
                         EC.presence_of_element_located((By.XPATH, xpath))
                     )
                     print(f"Found scrollable review area using XPath: {xpath}")
@@ -163,19 +287,29 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                 return []
 
             previous_reviews_count = 0
-            max_scroll_attempts = 100
+            max_scroll_attempts = 100 if not should_sort_by_lowest else 50  # Fewer attempts if sorted
             no_new_reviews_count = 0
             scroll_pause_time = 2
+            early_stop_triggered = False
 
-            print("Starting scroll to load all reviews...")
+            print(f"Starting scroll to load reviews... (Early stop enabled: {should_sort_by_lowest})")
             for attempt in range(max_scroll_attempts):
                 reviewDivs = browser.find_elements(By.XPATH, "//div[@data-review-id]")
                 current_reviews_count = len(reviewDivs)
                 print(f"Scroll attempt {attempt+1}/{max_scroll_attempts}: Found {current_reviews_count} reviews...")
 
+                # Early stopping logic when sorted by lowest rating
+                if should_sort_by_lowest and current_reviews_count >= 10:  # Check after we have some reviews
+                    should_stop = check_early_stop_condition(browser, selected_stars, max_rating_needed)
+                    if should_stop:
+                        print(f"Early stop triggered! Found rating higher than {max_rating_needed} stars. Stopping scroll.")
+                        early_stop_triggered = True
+                        break
+
                 if current_reviews_count == previous_reviews_count:
                     no_new_reviews_count += 1
-                    if no_new_reviews_count >= 5:
+                    stop_threshold = 3 if should_sort_by_lowest else 5  # Stop sooner if sorted
+                    if no_new_reviews_count >= stop_threshold:
                         print(f"No new reviews found after {no_new_reviews_count} attempts. Assuming all loaded ({current_reviews_count} total).")
                         break
                 else:
@@ -185,7 +319,10 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                 browser.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", reviewArea)
                 time.sleep(scroll_pause_time)
 
-            print(f"Scrolling finished. Found {previous_reviews_count} reviews in total.")
+            if early_stop_triggered:
+                print(f"Scrolling stopped early due to rating optimization. Found {previous_reviews_count} reviews.")
+            else:
+                print(f"Scrolling finished. Found {previous_reviews_count} reviews in total.")
 
         except Exception as e:
             print(f"Error during scrolling: {e}. Proceeding with currently loaded reviews.")
@@ -196,6 +333,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
 
         extracted_count = 0
         processed_review_ids = set()
+        consecutive_high_ratings = 0  # Track consecutive ratings above our threshold
 
         for review in reviewDivs:
             try:
@@ -244,6 +382,20 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                 # Skip review if no rating found
                 if rating_value == 0:
                     continue
+
+                # Early stopping logic when sorted by lowest rating
+                if should_sort_by_lowest and rating_value > max_rating_needed:
+                    consecutive_high_ratings += 1
+                    print(f"Found {rating_value}-star review (above threshold {max_rating_needed}). Consecutive high ratings: {consecutive_high_ratings}")
+                    
+                    # Stop if we see 5 consecutive reviews above our threshold
+                    if consecutive_high_ratings >= 5:
+                        print(f"Stopping extraction: Found {consecutive_high_ratings} consecutive reviews above {max_rating_needed} stars")
+                        break
+                    else:
+                        continue  # Skip this review but don't stop yet
+                else:
+                    consecutive_high_ratings = 0  # Reset counter
 
                 if rating_value in selected_stars:
                     reviewer_name = "N/A"
