@@ -124,8 +124,20 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
         # Don't set binary_location, let ChromeDriverManager handle it
 
     try:
-        service = ChromeService(ChromeDriverManager().install())
-        browser = webdriver.Chrome(service=service, options=options)
+        try:
+            driver_path = ChromeDriverManager().install()
+            if driver_path:
+                service = ChromeService(driver_path)
+                browser = webdriver.Chrome(service=service, options=options)
+                print("✅ Chrome driver created with ChromeDriverManager")
+            else:
+                raise Exception("ChromeDriverManager returned None")
+        except Exception as e:
+            print(f"ChromeDriverManager failed: {e}, trying system chromedriver...")
+            # Fallback to system chromedriver
+            browser = webdriver.Chrome(options=options)
+            print("✅ Chrome driver created with system chromedriver")
+        
         browser.get(f"https://www.google.com/maps/search/{search_query}")
         time.sleep(4)
 
