@@ -85,9 +85,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     business_data = {}
 
     print(f"Starting scraping for: {business_name_input} in {location_input}")
-    print(f"Search URL: https://www.google.com/maps/search/{search_query}")
-
-    # Chrome options optimized for cloud deployment
+    print(f"Search URL: https://www.google.com/maps/search/{search_query}")    # Chrome options optimized for cloud deployment
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-infobars")
@@ -104,6 +102,10 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     options.add_argument("--disable-background-timer-throttling")
     options.add_argument("--disable-renderer-backgrounding")
     options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--user-data-dir=/tmp/chrome-user-data")
+    options.add_argument("--data-path=/tmp/chrome-data")
+    options.add_argument("--cache-dir=/tmp/chrome-cache")
+    options.add_argument("--disk-cache-dir=/tmp/chrome-disk-cache")
     
     print("Chrome options configured for cloud deployment")
 
