@@ -27,11 +27,11 @@ RUN apt-get update && apt-get install -y \
     google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver
-RUN CHROMEDRIVER_VERSION=`curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE` && \
-    wget -O /tmp/chromedriver.zip http://chromedriver.storage.googleapis.com/CHROMEDRIVER_VERSION/chromedriver_linux64.zip && \
-    unzip /tmp/chromedriver.zip chromedriver -d /usr/local/bin/ && \
-    rm /tmp/chromedriver.zip && \
+# Install ChromeDriver using a fixed compatible version
+RUN wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/131.0.6778.108/linux64/chromedriver-linux64.zip" && \
+    unzip /tmp/chromedriver.zip -d /tmp/ && \
+    mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
+    rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64 && \
     chmod +x /usr/local/bin/chromedriver
 
 # Copy requirements and install Python dependencies
