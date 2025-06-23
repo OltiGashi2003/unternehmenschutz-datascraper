@@ -22,25 +22,6 @@ def convert_df_to_excel(df):
     processed_data = output.getvalue()
     return processed_data
 
-def find_chrome_binary():
-    """Find Chrome binary on the system"""
-    possible_paths = [
-        '/usr/bin/google-chrome',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/opt/google/chrome/chrome',
-        '/app/.apt/usr/bin/google-chrome-stable'
-    ]
-    
-    for path in possible_paths:
-        if os.path.exists(path):
-            print(f"✅ Found Chrome binary at: {path}")
-            return path
-    
-    print("⚠️ No Chrome binary found")
-    return None
-
 def check_early_stop_condition(browser, selected_stars, max_rating_needed):
     """
     Check if we should stop scrolling early based on rating patterns.
@@ -106,6 +87,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     print(f"Starting scraping for: {business_name_input} in {location_input}")
     print(f"Search URL: https://www.google.com/maps/search/{search_query}")
 
+    # Chrome options optimized for cloud deployment
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-infobars")
@@ -118,47 +100,32 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     options.add_argument("--disable-web-security")
     options.add_argument("--disable-features=VizDisplayCompositor")
     options.add_argument("--remote-debugging-port=9222")
-
-    # Enhanced Chrome binary detection for Render deployment
-    chrome_binary = find_chrome_binary()
-    if chrome_binary:
-        options.binary_location = chrome_binary
-    else:
-        print("⚠️ Warning: Chrome binary not found, using system default")
+    options.add_argument("--single-process")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    
+    print("Chrome options configured for cloud deployment")
 
     try:
-        # Improved Chrome driver creation with fallbacks
+        print("Creating Chrome driver...")
         browser = None
-        driver_created = False
         
-        # Method 1: Try ChromeDriverManager
+        # Method 1: Try ChromeDriverManager (recommended for cloud)
         try:
-            print("Attempting to create Chrome driver with ChromeDriverManager...")
-            driver_path = ChromeDriverManager().install()
-            if driver_path and os.path.exists(driver_path):
-                service = ChromeService(driver_path)
-                browser = webdriver.Chrome(service=service, options=options)
-                print("✅ Chrome driver created successfully with ChromeDriverManager")
-                driver_created = True
-            else:
-                print("ChromeDriverManager returned invalid path")
+            service = ChromeService(ChromeDriverManager().install())
+            browser = webdriver.Chrome(service=service, options=options)
+            print("✅ Chrome driver created successfully with ChromeDriverManager")
         except Exception as e:
             print(f"ChromeDriverManager failed: {e}")
-        
-        # Method 2: Try system chromedriver if Method 1 failed
-        if not driver_created:
+            
+            # Method 2: Fallback to system chromedriver
             try:
-                print("Trying system chromedriver...")
                 browser = webdriver.Chrome(options=options)
                 print("✅ Chrome driver created with system chromedriver")
-                driver_created = True
-            except Exception as e:
-                print(f"System chromedriver failed: {e}")
-        
-        # If both methods failed, return empty list
-        if not driver_created or not browser:
-            print("❌ Failed to create Chrome driver with any method")
-            return []
+            except Exception as e2:
+                print(f"❌ All Chrome driver methods failed: {e2}")
+                return []
 
         # Navigate to Google Maps
         try:
