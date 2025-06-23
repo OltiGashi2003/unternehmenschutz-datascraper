@@ -111,21 +111,14 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
         print("Creating Chrome driver...")
         browser = None
         
-        # Method 1: Try ChromeDriverManager (recommended for cloud)
+        # Skip ChromeDriverManager - use direct Chrome installation
         try:
-            service = ChromeService(ChromeDriverManager().install())
-            browser = webdriver.Chrome(service=service, options=options)
-            print("✅ Chrome driver created successfully with ChromeDriverManager")
+            # Let webdriver find Chrome automatically without ChromeDriverManager
+            browser = webdriver.Chrome(options=options)
+            print("✅ Chrome driver created successfully")
         except Exception as e:
-            print(f"ChromeDriverManager failed: {e}")
-            
-            # Method 2: Fallback to system chromedriver
-            try:
-                browser = webdriver.Chrome(options=options)
-                print("✅ Chrome driver created with system chromedriver")
-            except Exception as e2:
-                print(f"❌ All Chrome driver methods failed: {e2}")
-                return []
+            print(f"❌ Chrome driver creation failed: {e}")
+            return []
 
         # Navigate to Google Maps
         try:
