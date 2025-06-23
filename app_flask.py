@@ -22,6 +22,25 @@ def convert_df_to_excel(df):
     processed_data = output.getvalue()
     return processed_data
 
+def find_chrome_binary():
+    """Find Chrome binary on the system"""
+    possible_paths = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/opt/google/chrome/chrome',
+        '/app/.apt/usr/bin/google-chrome-stable'
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"✅ Found Chrome binary at: {path}")
+            return path
+    
+    print("⚠️ No Chrome binary found")
+    return None
+
 def check_early_stop_condition(browser, selected_stars, max_rating_needed):
     """
     Check if we should stop scrolling early based on rating patterns.
@@ -90,7 +109,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-infobars")
-    options.add_argument("--headless=new")  # Use new headless mode for better Render compatibility
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
@@ -101,45 +120,56 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
     options.add_argument("--remote-debugging-port=9222")
 
     # Enhanced Chrome binary detection for Render deployment
-    chrome_paths = [
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable", 
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/opt/google/chrome/chrome",
-        "/app/.apt/usr/bin/google-chrome-stable"  # Render-specific path
-    ]
-
-    chrome_binary = None
-    for path in chrome_paths:
-        if os.path.exists(path):
-            chrome_binary = path
-            print(f"✅ Found Chrome binary at: {path}")
-            break
-
+    chrome_binary = find_chrome_binary()
     if chrome_binary:
         options.binary_location = chrome_binary
     else:
         print("⚠️ Warning: Chrome binary not found, using system default")
-        # Don't set binary_location, let ChromeDriverManager handle it
 
     try:
+        # Improved Chrome driver creation with fallbacks
+        browser = None
+        driver_created = False
+        
+        # Method 1: Try ChromeDriverManager
         try:
+            print("Attempting to create Chrome driver with ChromeDriverManager...")
             driver_path = ChromeDriverManager().install()
-            if driver_path:
+            if driver_path and os.path.exists(driver_path):
                 service = ChromeService(driver_path)
                 browser = webdriver.Chrome(service=service, options=options)
-                print("✅ Chrome driver created with ChromeDriverManager")
+                print("✅ Chrome driver created successfully with ChromeDriverManager")
+                driver_created = True
             else:
-                raise Exception("ChromeDriverManager returned None")
+                print("ChromeDriverManager returned invalid path")
         except Exception as e:
-            print(f"ChromeDriverManager failed: {e}, trying system chromedriver...")
-            # Fallback to system chromedriver
-            browser = webdriver.Chrome(options=options)
-            print("✅ Chrome driver created with system chromedriver")
+            print(f"ChromeDriverManager failed: {e}")
         
-        browser.get(f"https://www.google.com/maps/search/{search_query}")
-        time.sleep(4)
+        # Method 2: Try system chromedriver if Method 1 failed
+        if not driver_created:
+            try:
+                print("Trying system chromedriver...")
+                browser = webdriver.Chrome(options=options)
+                print("✅ Chrome driver created with system chromedriver")
+                driver_created = True
+            except Exception as e:
+                print(f"System chromedriver failed: {e}")
+        
+        # If both methods failed, return empty list
+        if not driver_created or not browser:
+            print("❌ Failed to create Chrome driver with any method")
+            return []
+
+        # Navigate to Google Maps
+        try:
+            browser.get(f"https://www.google.com/maps/search/{search_query}")
+            time.sleep(4)
+            print("✅ Successfully navigated to Google Maps")
+        except Exception as e:
+            print(f"❌ Failed to navigate to Google Maps: {e}")
+            if browser:
+                browser.quit()
+            return []
 
         # Accept cookies if present
         try:
@@ -194,7 +224,9 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
             business_data["Price Range"] = "N/A"
 
         except Exception as e:
-            print(f"Could not extract all business overview details: {e}")        # Click "Reviews" tab
+            print(f"Could not extract all business overview details: {e}")
+
+        # Click "Reviews" tab
         try:
             review_button_xpaths = [
                 '//button[contains(@aria-label, "Reviews for") or contains(@aria-label, "Rezensionen für")]',
@@ -234,7 +266,7 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
         if should_sort_by_lowest:
             try:
                 print("Attempting to sort reviews by lowest rating for optimization...")
-                  # Try multiple selectors for the Sort button
+                # Try multiple selectors for the Sort button
                 sort_button = None
                 sort_selectors = [
                     '//span[@class="Cw1rxd google-symbols G47vBd"]',
@@ -419,7 +451,9 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                     try:
                         reviewer_name = review.find_element(By.XPATH, ".//div[contains(@class, 'd4r55')]").text
                     except NoSuchElementException:
-                        pass                    # Handle different date formats and filter by source
+                        pass
+
+                    # Handle different date formats and filter by source
                     try:
                         # First try the standard date format (star-based reviews)
                         date_element = review.find_element(By.XPATH, ".//span[contains(@class, 'rsqaWe')]")
@@ -432,7 +466,8 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                             du9pgb_element = review.find_element(By.XPATH, ".//div[@class='DU9Pgb']")
                             full_text = du9pgb_element.text.strip()
                             print(f"Found DU9Pgb element with text: '{full_text}'")
-                              # Example text: "2/5 5 years ago on Tripadvisor" or "4/5 a year ago on Google"
+                            
+                            # Example text: "2/5 5 years ago on Tripadvisor" or "4/5 a year ago on Google"
                             # We need to extract just the date part (e.g., "5 years ago", "a year ago")
                             
                             # Use regex to extract the date pattern from the full text
@@ -504,7 +539,6 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                                         if len(parts) >= 2:
                                             # Extract everything before " on " and after the rating
                                             before_on = parts[0].strip()
-    
                                             # Remove rating pattern (e.g., "2/5 ")
                                             date_part = re.sub(r'^\d+/\d+\s*', '', before_on).strip()
                                             if date_part:
@@ -551,7 +585,8 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                                 print("No date elements found, setting defaults")
                                 review_date = "Date not found"
                                 review_source = "Google"
-                      # Skip the review if it's not from Google
+
+                    # Skip the review if it's not from Google
                     if review_source != "Google":
                         continue
 
@@ -586,12 +621,17 @@ def scrape_google_maps_reviews(business_name_input, location_input, selected_sta
                 print(f"Error processing one review: {e}")
 
         print(f"Extracted {extracted_count} unique reviews with selected star ratings.")
+        
     except Exception as e:
         print(f"An unexpected error occurred during the scraping process: {e}")
+        return []
     finally:
         if 'browser' in locals() and browser:
-            browser.quit()
-            print("Browser closed.")
+            try:
+                browser.quit()
+                print("Browser closed.")
+            except:
+                pass
 
     return all_reviews
 
