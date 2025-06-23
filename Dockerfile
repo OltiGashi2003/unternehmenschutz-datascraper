@@ -27,8 +27,8 @@ RUN apt-get update && apt-get install -y \
     google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver using a fixed compatible version
-RUN wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/131.0.6778.108/linux64/chromedriver-linux64.zip" && \
+# Install ChromeDriver with matching version to Chrome
+RUN wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/137.0.7151.119/linux64/chromedriver-linux64.zip" && \
     unzip /tmp/chromedriver.zip -d /tmp/ && \
     mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
     rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64 && \
@@ -41,9 +41,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create a non-root user for security
+# Create a non-root user for security and set up Chrome cache directories
 RUN groupadd -r appuser && useradd -r -g appuser appuser
-RUN chown -R appuser:appuser /app
+RUN mkdir -p /home/appuser/.cache/selenium /home/appuser/.config/google-chrome
+RUN chown -R appuser:appuser /app /home/appuser
 USER appuser
 
 # Expose the port the app runs on
